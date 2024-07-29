@@ -107,7 +107,10 @@ def solve_intermediate_solutions(  # noqa: PLR0913
         # depending on problem properties (either diff or non-diff)
         asf_problem, target = add_asf_diff(problem, "target", rp, **(scalarization_options or {}))
 
-        solver = init_solver(asf_problem, _solver_options)
+        if _solver_options:
+            solver = init_solver(asf_problem, _solver_options)
+        else:
+            solver = init_solver(asf_problem)
 
         # solve and store results
         result: SolverResults = solver.solve(target)
