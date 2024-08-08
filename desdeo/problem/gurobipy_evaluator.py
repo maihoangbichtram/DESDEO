@@ -502,7 +502,7 @@ class GurobipyEvaluator:
         """
         result_dict = {}
 
-        if self.model.SolCount > 1:
+        if self.model.SolCount > 0:
             for var in self.problem.variables:
                 # if var is type MVar, get the values of MVar
                 if var.symbol in self.mvars:
