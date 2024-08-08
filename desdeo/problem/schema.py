@@ -63,6 +63,37 @@ Tensor = TypeAliasType(
     ],
 )
 
+def parse_infix_to_func_as_sub_constraints(cls: "Problem", v: str | list) -> list:
+    """Validator that checks if the 'func' field is of type str or list.
+
+    If str, then it is assumed the string represents the func in infix notation. The string
+    is parsed in the validator.
+    If list, then it is assumed the string represents list of funcs in infix notation.
+
+    Args:
+        cls: the class of the pydantic model the validator is applied to.
+        v (str | list): The func to be validated.
+
+    Raises:
+        ValueError: v is neither an instance of str or a list.
+
+    Returns:
+        list: The func(s) represented in Math JSON format.
+    """
+    funcs = []
+
+    if isinstance(v, list):
+        for item in v:
+            funcs.append(parse_infix_to_func(cls, item))
+
+        return funcs
+    else:
+        return parse_infix_to_func(v)
+
+    # Raise an error if v is neither a string nor a list
+    msg = f"The function expressions must be a string (infix expression) or a list. Got {type(v)}."
+    raise ValueError(msg)
+
 
 def parse_infix_to_func(cls: "Problem", v: str | list) -> list:
     """Validator that checks if the 'func' field is of type str or list.
@@ -214,6 +245,12 @@ class ConstraintTypeEnum(str, Enum):
     """An equality constraint."""
     LTE = "<="  # less than or equal
     """An inequality constraint of type 'less than or equal'."""
+
+
+class SubConstraintTypeEnum(str, Enum):
+    """An enumerator for supported subconstraint expression types."""
+
+    MAX="MAX"
 
 
 class ObjectiveTypeEnum(str, Enum):
@@ -476,60 +513,6 @@ class ExtraFunction(BaseModel):
     )
 
 
-class ScalarizationFunction(BaseModel):
-    """Model for scalarization of the problem."""
-
-    name: str = Field(description=("Name of the scalarization function."), frozen=True)
-    """Name of the scalarization function."""
-    symbol: str | None = Field(
-        description=(
-            "Optional symbol to represent the scalarization function. This may be used in UIs and visualizations."
-        ),
-        default=None,
-        frozen=False,
-    )
-    """Optional symbol to represent the scalarization function. This may be used
-    in UIs and visualizations. Defaults to `None`."""
-    func: list = Field(
-        description=(
-            "Function representation of the scalarization. This is a JSON object that can be parsed into a function."
-            "Must be a valid MathJSON object."
-            " The symbols in the function must match the symbols defined for objective/variable/constant/extra"
-            " function."
-        ),
-        frozen=True,
-    )
-    """ Function representation of the scalarization. This is a JSON object that
-    can be parsed into a function.  Must be a valid MathJSON object. The
-    symbols in the function must match the symbols defined for
-    objective/variable/constant/extra function."""
-    is_linear: bool = Field(
-        description="Whether the function expression is linear or not. Defaults to `False`.", default=False, frozen=True
-    )
-    """Whether the function expression is linear or not. Defaults to `False`."""
-    is_convex: bool = Field(
-        description="Whether the function expression is convex or not (non-convex). Defaults to `False`.",
-        default=False,
-        frozen=True,
-    )
-    """Whether the function expression is convex or not (non-convex). Defaults to `False`."""
-    is_twice_differentiable: bool = Field(
-        description="Whether the function expression is twice differentiable or not. Defaults to `False`",
-        default=False,
-        frozen=True,
-    )
-    """Whether the function expression is twice differentiable or not. Defaults to `False`"""
-    scenario_keys: list[str] = Field(
-        description="Optional. The keys of the scenarios the scalarization function belongs to.", default=None
-    )
-    """Optional. The keys of the scenarios the scalarization function belongs to."""
-
-    _parse_infix_to_func = field_validator("func", mode="before")(parse_infix_to_func)
-    _parse_scenario_key_singleton_to_list = field_validator("scenario_keys", mode="before")(
-        parse_scenario_key_singleton_to_list
-    )
-
-
 class Objective(BaseModel):
     """Model for an objective function."""
 
@@ -680,6 +663,78 @@ class Constraint(BaseModel):
         description="Optional. The keys of the scenarios the constraint belongs to.", default=None
     )
     """Optional. The keys of the scenarios the constraint belongs to."""
+
+    _parse_infix_to_func = field_validator("func", mode="before")(parse_infix_to_func)
+    _parse_scenario_key_singleton_to_list = field_validator("scenario_keys", mode="before")(
+        parse_scenario_key_singleton_to_list
+    )
+
+class SubConstraint(Constraint):
+    cons_type: SubConstraintTypeEnum = Field(
+        description=(
+            "The type of the constraint. Constraints are assumed to be in a standard form where the supplied 'func'"
+            " expression is on the left hand side of the constraint's expression, and on the right hand side a zero"
+            " value is assume. The comparison between the left hand side and right hand side is either and quality"
+            " comparison ('=') or lesser than equal comparison ('<=')."
+        )
+    )
+    _parse_infix_to_func = field_validator("func", mode="before")(parse_infix_to_func_as_sub_constraints)
+
+class ScalarizationFunction(BaseModel):
+    """Model for scalarization of the problem."""
+
+    name: str = Field(description=("Name of the scalarization function."), frozen=True)
+    """Name of the scalarization function."""
+    symbol: str | None = Field(
+        description=(
+            "Optional symbol to represent the scalarization function. This may be used in UIs and visualizations."
+        ),
+        default=None,
+        frozen=False,
+    )
+    """Optional symbol to represent the scalarization function. This may be used
+    in UIs and visualizations. Defaults to `None`."""
+    func: list = Field(
+        description=(
+            "Function representation of the scalarization. This is a JSON object that can be parsed into a function."
+            "Must be a valid MathJSON object."
+            " The symbols in the function must match the symbols defined for objective/variable/constant/extra"
+            " function."
+        ),
+        frozen=True,
+    )
+    sub_constraints: list[SubConstraint] = Field(
+        description=(
+           "Constraints (like Max()) that can't be in direct operation with MLinExpr."
+           "Must be a valid MathJSON object."
+        ),
+        frozen=True,
+        default=None,
+    )
+    """ Function representation of the scalarization. This is a JSON object that
+    can be parsed into a function.  Must be a valid MathJSON object. The
+    symbols in the function must match the symbols defined for
+    objective/variable/constant/extra function."""
+    is_linear: bool = Field(
+        description="Whether the function expression is linear or not. Defaults to `False`.", default=False, frozen=True
+    )
+    """Whether the function expression is linear or not. Defaults to `False`."""
+    is_convex: bool = Field(
+        description="Whether the function expression is convex or not (non-convex). Defaults to `False`.",
+        default=False,
+        frozen=True,
+    )
+    """Whether the function expression is convex or not (non-convex). Defaults to `False`."""
+    is_twice_differentiable: bool = Field(
+        description="Whether the function expression is twice differentiable or not. Defaults to `False`",
+        default=False,
+        frozen=True,
+    )
+    """Whether the function expression is twice differentiable or not. Defaults to `False`"""
+    scenario_keys: list[str] = Field(
+        description="Optional. The keys of the scenarios the scalarization function belongs to.", default=None
+    )
+    """Optional. The keys of the scenarios the scalarization function belongs to."""
 
     _parse_infix_to_func = field_validator("func", mode="before")(parse_infix_to_func)
     _parse_scenario_key_singleton_to_list = field_validator("scenario_keys", mode="before")(

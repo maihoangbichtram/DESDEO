@@ -12,6 +12,7 @@ from desdeo.problem.schema import (
     Constant,
     Constraint,
     ConstraintTypeEnum,
+    SubConstraintTypeEnum,
     Objective,
     Problem,
     ScalarizationFunction,
@@ -300,6 +301,26 @@ class GurobipyEvaluator:
         scalarizations: dict[str, gp.Var | gp.MVar | gp.LinExpr | gp.QuadExpr | gp.MLinExpr | gp.MQuadExpr] = {}
 
         for scal in problem.scalarization_funcs:
+            if scal.sub_constraints is not None:
+                for cons in scal.sub_constraints:
+                    expr = []
+                    for func in cons.func:
+                        gp_expr = self.parse(func, callback=self.get_expression_by_name)
+                        expr.append(gp_expr)
+
+                    a_ = self.model.addVars([i for i in range(len(expr))], name="a_")
+
+                    match con_type := cons.cons_type:
+                        case SubConstraintTypeEnum.MAX:
+                            globals()[f'{cons.symbol}'] = self.model.addVar(name=cons.symbol)
+                            self.model.addConstrs((a_[i] == expr[i] for i in range(len(expr))), name = f"define_{cons.symbol}")
+                            self.model.addConstr(globals()[f'{cons.symbol}'] == gp.max_(a_), cons.symbol)
+                        case _:
+                            msg = f"Constraint type of {con_type} not supported. Must be one of {ConstraintTypeEnum}."
+                            raise GurobipyEvaluatorError(msg)
+
+                    self.model.update()
+
             scalarizations[scal.symbol] = self.parse(scal.func, self.get_expression_by_name)
 
         return scalarizations
@@ -481,31 +502,32 @@ class GurobipyEvaluator:
         """
         result_dict = {}
 
-        for var in self.problem.variables:
-            # if var is type MVar, get the values of MVar
-            if var.symbol in self.mvars:
-                result_dict[var.symbol] = self.mvars[var.symbol].getAttr(gp.GRB.Attr.X)
-            else:
-                result_dict[var.symbol] = self.model.getVarByName(var.symbol).getAttr(gp.GRB.Attr.X)
+        if self.model.SolCount > 1:
+            for var in self.problem.variables:
+                # if var is type MVar, get the values of MVar
+                if var.symbol in self.mvars:
+                    result_dict[var.symbol] = self.mvars[var.symbol].getAttr(gp.GRB.Attr.X)
+                else:
+                    result_dict[var.symbol] = self.model.getVarByName(var.symbol).getAttr(gp.GRB.Attr.X)
 
-        for obj in self.problem.objectives:
-            result_dict[obj.symbol] = self.objective_functions[obj.symbol].getValue()
+            for obj in self.problem.objectives:
+                result_dict[obj.symbol] = self.objective_functions[obj.symbol].getValue()
 
-        if self.problem.constants is not None:
-            for con in self.problem.constants:
-                result_dict[con.symbol] = self.constants[con.symbol]
+            if self.problem.constants is not None:
+                for con in self.problem.constants:
+                    result_dict[con.symbol] = self.constants[con.symbol]
 
-        if self.problem.extra_funcs is not None:
-            for extra in self.problem.extra_funcs:
-                result_dict[extra.symbol] = self.extra_functions[extra.symbol].getValue()
+            if self.problem.extra_funcs is not None:
+                for extra in self.problem.extra_funcs:
+                    result_dict[extra.symbol] = self.extra_functions[extra.symbol].getValue()
 
-        if self.problem.constraints is not None:
-            for const in self.problem.constraints:
-                result_dict[const.symbol] = -self.model.getConstrByName(const.symbol).getAttr("Slack")
+            if self.problem.constraints is not None:
+                for const in self.problem.constraints:
+                    result_dict[const.symbol] = -self.model.getConstrByName(const.symbol).getAttr("Slack")
 
-        if self.problem.scalarization_funcs is not None:
-            for scal in self.problem.scalarization_funcs:
-                result_dict[scal.symbol] = self.scalarizations[scal.symbol].getValue()
+            if self.problem.scalarization_funcs is not None:
+                for scal in self.problem.scalarization_funcs:
+                    result_dict[scal.symbol] = self.scalarizations[scal.symbol].getValue()
 
         return result_dict
 
