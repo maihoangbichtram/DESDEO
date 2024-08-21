@@ -7,7 +7,7 @@ import polars as pl
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
 from desdeo.api import db_models
-from desdeo.api.db import SessionLocal, engine
+from desdeo.api.db import Base, SessionLocal, engine
 from desdeo.api.routers.UserAuth import get_password_hash
 from desdeo.api.schema import ObjectiveKind, ProblemKind, UserPrivileges, UserRole
 from desdeo.problem.schema import DiscreteRepresentation, Objective, Problem, Variable
@@ -23,26 +23,61 @@ print("Creating database tables.")
 if not database_exists(engine.url):
     create_database(engine.url)
 else:
-    warnings.warn("Database already exists. Dropping and recreating it.", stacklevel=1)
-    drop_database(engine.url)
-    create_database(engine.url)
+    warnings.warn("Database already exists. Clearing it.", stacklevel=1)
+    # Drop all tables
+    Base.metadata.drop_all(bind=engine)
 print("Database tables created.")
 
 # Create the tables in the database.
-db_models.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Create test users
 db = SessionLocal()
 user = db_models.User(
-    username="test",
+    username="analyst",
     password_hash=get_password_hash("test"),
     role=UserRole.ANALYST,
     privilages=[UserPrivileges.EDIT_USERS, UserPrivileges.CREATE_PROBLEMS],
     user_group="",
 )
 db.add(user)
-db.commit()
-db.refresh(user)
+
+dmUser = db_models.User(
+    username="dm",
+    password_hash=get_password_hash("test"),
+    role=UserRole.DM,
+    privilages=[],
+    user_group="",
+)
+db.add(dmUser)
+
+dmUser2 = db_models.User(
+    username="dm2",
+    password_hash=get_password_hash("test"),
+    role=UserRole.DM,
+    privilages=[],
+    user_group="",
+)
+db.add(dmUser2)
+
+dmUser3 = db_models.User(
+    username="dm3",
+    password_hash=get_password_hash("test"),
+    role=UserRole.DM,
+    privilages=[],
+    user_group="",
+)
+db.add(dmUser3)
+
+dmUser4 = db_models.User(
+    username="dm4",
+    password_hash=get_password_hash("test"),
+    role=UserRole.DM,
+    privilages=[],
+    user_group="",
+)
+db.add(dmUser4)
+
 problem = binh_and_korn()
 
 problem_in_db = db_models.Problem(
@@ -51,8 +86,18 @@ problem_in_db = db_models.Problem(
     kind=ProblemKind.CONTINUOUS,
     obj_kind=ObjectiveKind.ANALYTICAL,
     value=problem.model_dump(mode="json"),
+    role_permission=[UserRole.GUEST],
 )
+
 db.add(problem_in_db)
+
+
+'''userAccess = db_models.UserProblemAccess(
+    user_id=dmUser2.id,
+    problem_access=problem_in_db.id
+)
+db.add(userAccess)
+db.commit()'''
 
 problem = nimbus_test_problem()
 problem_in_db = db_models.Problem(
@@ -61,10 +106,35 @@ problem_in_db = db_models.Problem(
     kind=ProblemKind.CONTINUOUS,
     obj_kind=ObjectiveKind.ANALYTICAL,
     value=problem.model_dump(mode="json"),
-    role_permission=[],
+    # role_permission=[],
 )
 
 db.add(problem_in_db)
+db.commit()
+
+'''userAccess = db_models.UserProblemAccess(
+    user_id=dmUser2.id,
+    problem_access=problem_in_db.id
+)
+db.add(userAccess)
+
+userAccess = db_models.UserProblemAccess(
+    user_id=dmUser.id,
+    problem_access=problem_in_db.id
+)
+db.add(userAccess)
+
+userAccess = db_models.UserProblemAccess(
+    user_id=dmUser3.id,
+    problem_access=problem_in_db.id
+)
+db.add(userAccess)
+
+userAccess = db_models.UserProblemAccess(
+    user_id=dmUser4.id,
+    problem_access=problem_in_db.id
+)
+db.add(userAccess)'''
 
 problem = forest_problem(holding=1, comparing=True)
 problem_in_db = db_models.Problem(
@@ -73,17 +143,15 @@ problem_in_db = db_models.Problem(
     kind=ProblemKind.CONTINUOUS,
     obj_kind=ObjectiveKind.ANALYTICAL,
     value=problem.model_dump(mode="json"),
-    role_permission=[UserRole.DM],
+    # role_permission=[UserRole.DM],
 )
 db.add(problem_in_db)
-
 db.commit()
-
 
 # db.close()
 
 
-def fakeProblemDontLook():
+'''def fakeProblemDontLook():
     # Data loading
     data = pl.read_csv("./experiment/LUKE best front.csv")
     data = data.drop(["non_dominated", "source"])
@@ -178,7 +246,7 @@ def fakeProblemDontLook():
         variables=[index_var],
         objectives=[npv, sv30, removal1, removal2, removal3],
         discrete_representation=dis_def,
-    )
+    )'''
 
 
 # luke_problem = fakeProblemDontLook()
